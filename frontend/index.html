@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CLV Dashboard – Customer Lifetime Value</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 1.5rem;
+      background: #f0f2f5;
+      color: #1f2937;
+    }
+    .header {
+      background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%);
+      color: #fff;
+      padding: 1.5rem 2rem;
+      border-radius: 12px;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.1);
+    }
+    .header h1 { margin: 0 0 0.25rem 0; font-size: 1.5rem; font-weight: 700; }
+    .header p { margin: 0; opacity: 0.9; font-size: 0.9rem; }
+
+    .upload-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 1.5rem 2rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .upload-card label { display: block; margin-bottom: 0.5rem; font-weight: 600; color: #374151; }
+    .upload-card input[type="file"] { margin-bottom: 1rem; }
+    .btn {
+      background: #1e3a5f;
+      color: #fff;
+      border: none;
+      padding: 0.65rem 1.4rem;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.95rem;
+    }
+    .btn:hover { background: #16324d; }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .dashboard-section { margin-bottom: 1.5rem; }
+    .dashboard-section h2 {
+      font-size: 1.1rem;
+      color: #374151;
+      margin-bottom: 1rem;
+      font-weight: 600;
+    }
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .stat-card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 1.25rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      border-left: 4px solid #1e3a5f;
+    }
+    .stat-card .label { font-size: 0.8rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
+    .stat-card .value { font-size: 1.5rem; font-weight: 700; color: #1f2937; }
+
+    .table-card {
+      background: #fff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    th {
+      background: #1e3a5f;
+      color: #fff;
+      font-weight: 600;
+      padding: 0.75rem 1rem;
+      text-align: left;
+      white-space: nowrap;
+    }
+    td { padding: 0.65rem 1rem; border-bottom: 1px solid #e5e7eb; }
+    tr.summary-row {
+      background: #f3f4f6;
+      font-weight: 600;
+      border-top: 2px solid #1e3a5f;
+    }
+    tr.summary-row td { border-bottom: 2px solid #1e3a5f; }
+    tr:nth-child(even) { background: #f9fafb; }
+    tr:hover { background: #f3f4f6; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .customer-id { font-weight: 500; color: #1e3a5f; }
+    .message { padding: 1rem; border-radius: 8px; margin-bottom: 1rem; }
+    .message.error { background: #fef2f2; color: #b91c1c; }
+    .message.info { background: #eff6ff; color: #1e40af; }
+    .chart-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .chart-wrap { position: relative; height: 320px; }
+    .hidden { display: none; }
+    .definitions { background: #eff6ff; color: #1e40af; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; font-size: 0.85rem; }
+
+    @media (max-width: 640px) {
+      .stats-row { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>Customer Lifetime Value (CLV) Dashboard</h1>
+    <p>Upload your transactions CSV to see customer summary, 30-day purchase predictions, and 12-month CLV.</p>
+  </header>
+
+  <div class="upload-card">
+    <label for="csv">Select CSV file</label>
+    <input type="file" id="csv" accept=".csv" />
+    <br />
+    <button type="button" id="upload" class="btn">Analyze</button>
+  </div>
+
+  <div id="message" class="message hidden"></div>
+
+  <div id="dashboard" class="hidden">
+    <section class="dashboard-section">
+      <h2>Overview</h2>
+      <div class="stats-row" id="statsRow"></div>
+    </section>
+    <section class="dashboard-section">
+      <h2>Churn & Retention rates</h2>
+      <div class="chart-card">
+        <div class="chart-wrap" style="height: 280px;">
+          <canvas id="chartChurnRetention"></canvas>
+        </div>
+      </div>
+    </section>
+    <section class="dashboard-section">
+      <h2>Top 10 customers by CLV (12 months)</h2>
+      <div class="chart-card">
+        <div class="chart-wrap">
+          <canvas id="chartTop10"></canvas>
+        </div>
+      </div>
+    </section>
+    <section class="dashboard-section">
+      <h2>CLV distribution</h2>
+      <div class="chart-card">
+        <div class="chart-wrap">
+          <canvas id="chartClvDist"></canvas>
+        </div>
+      </div>
+    </section>
+    <section class="dashboard-section">
+      <h2>Recency vs Frequency (bubble = CLV)</h2>
+      <div class="chart-card">
+        <div class="chart-wrap">
+          <canvas id="chartRfmBubble"></canvas>
+        </div>
+      </div>
+    </section>
+    <section class="dashboard-section">
+      <h2>Customer results</h2>
+      <div class="definitions">
+        <strong>Column meanings:</strong>
+        <ul>
+          <li><b>Customer ID</b>: Unique customer identifier from your CSV.</li>
+          <li><b>Frequency</b>: Number of repeat purchases (after the first).</li>
+          <li><b>Recency (days)</b>: Days between the last and first purchase, up to observation end.</li>
+          <li><b>T (days)</b>: Customer age in days (first purchase to observation end).</li>
+          <li><b>Avg order value</b>: Average revenue per transaction.</li>
+          <li><b>Pred. purchases (30d)</b>: Expected number of purchases in the next 30 days.</li>
+          <li><b>Probability alive (%)</b>: Chance the customer is still active.</li>
+          <li><b>CLV (12 months)</b>: Expected revenue over the next 12 months.</li>
+        </ul>
+      </div>
+      <div class="table-card">
+        <div class="table-wrap">
+          <table id="table">
+            <thead id="thead"></thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script>
+    const csvInput = document.getElementById('csv');
+    const uploadBtn = document.getElementById('upload');
+    const messageEl = document.getElementById('message');
+    const dashboardEl = document.getElementById('dashboard');
+    const statsRowEl = document.getElementById('statsRow');
+    const thead = document.getElementById('thead');
+    const tbody = document.getElementById('tbody');
+    let chartTop10 = null;
+    let chartChurnRetention = null;
+    let chartClvDist = null;
+    let chartRfmBubble = null;
+
+    const COL_LABELS = {
+      customer_id: 'Customer ID',
+      frequency: 'Frequency',
+      recency: 'Recency (days)',
+      T: 'T (days)',
+      monetary_value: 'Avg order value',
+      pred_purchases_30d: 'Pred. purchases (30d)',
+      clv_12m: 'CLV (12 months)',
+      prob_alive: 'Probability alive (%)',
+    };
+
+    const COL_TITLES = {
+      customer_id: 'Unique customer identifier',
+      frequency: 'Number of repeat purchases after the first',
+      recency: 'Days since last purchase within the observation window',
+      T: 'Customer age in days (first purchase to observation end)',
+      monetary_value: 'Average revenue per transaction',
+      pred_purchases_30d: 'Expected purchases in the next 30 days',
+      clv_12m: 'Expected revenue over the next 12 months',
+      prob_alive: 'Probability that the customer is still active',
+    };
+
+    function showMessage(text, isError) {
+      messageEl.textContent = text;
+      messageEl.className = 'message ' + (isError ? 'error' : 'info');
+      messageEl.classList.remove('hidden');
+    }
+
+    function hideMessage() {
+      messageEl.classList.add('hidden');
+    }
+
+    function formatNum(x) {
+      if (x == null || x === '' || x === undefined) return '—';
+      const n = Number(x);
+      if (isNaN(n)) return x;
+      if (n >= 1000 || n <= -1000) return n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+      return Number.isInteger(n) ? n : n.toFixed(2);
+    }
+    function formatPercent(x) {
+      if (x == null || x === '' || x === undefined) return '—';
+      const n = Number(x);
+      if (isNaN(n)) return x;
+      return (n * 100).toFixed(1) + '%';
+    }
+
+    uploadBtn.addEventListener('click', async () => {
+      const file = csvInput.files[0];
+      if (!file) {
+        showMessage('Please select a CSV file.', true);
+        return;
+      }
+      hideMessage();
+      dashboardEl.classList.add('hidden');
+      uploadBtn.disabled = true;
+
+      const form = new FormData();
+      form.append('file', file);
+
+      try {
+        const res = await fetch('/api/analyze', { method: 'POST', body: form });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          const d = data.detail;
+          const msg = Array.isArray(d) ? d.map(x => x.msg || x).join(', ') : (d || data.message || res.statusText || 'Request failed');
+          showMessage(msg, true);
+          return;
+        }
+
+        if (!data.ok || !data.summary) {
+          showMessage('Invalid response from server.', true);
+          return;
+        }
+
+        const rows = data.summary;
+        const cols = rows.length ? Object.keys(rows[0]) : [];
+
+        // Overview cards
+        const withClv = rows.filter(r => r.clv_12m != null && r.clv_12m !== '');
+        const avgClv = withClv.length ? withClv.reduce((s, r) => s + Number(r.clv_12m), 0) / withClv.length : 0;
+        const avgPred = rows.reduce((s, r) => s + (Number(r.pred_purchases_30d) || 0), 0) / (rows.length || 1);
+
+        const retentionRate = (data.retention_rate != null ? data.retention_rate : 0) * 100;
+        const churnRate = (data.churn_rate != null ? data.churn_rate : 0) * 100;
+
+        statsRowEl.innerHTML = [
+          { label: 'Total transactions', value: (data.rows_uploaded || 0).toLocaleString() },
+          { label: 'Total customers', value: (data.customers || 0).toLocaleString() },
+          { label: 'Avg CLV (12m)', value: formatNum(avgClv) },
+          { label: 'Avg pred. purchases (30d)', value: formatNum(avgPred) },
+          { label: 'Retention rate', value: retentionRate.toFixed(1) + '%' },
+          { label: 'Churn rate', value: churnRate.toFixed(1) + '%' },
+        ].map(s => `
+          <div class="stat-card">
+            <div class="label">${s.label}</div>
+            <div class="value">${s.value}</div>
+          </div>
+        `).join('');
+
+        // Churn & Retention graph
+        const chartChurnEl = document.getElementById('chartChurnRetention');
+        if (chartChurnRetention) chartChurnRetention.destroy();
+        if (typeof Chart !== 'undefined') {
+          chartChurnRetention = new Chart(chartChurnEl, {
+            type: 'bar',
+            data: {
+              labels: ['Retention Rate', 'Churn Rate'],
+              datasets: [{
+                label: 'Rate (%)',
+                data: [retentionRate, churnRate],
+                backgroundColor: ['rgba(34, 197, 94, 0.7)', 'rgba(239, 68, 68, 0.7)'],
+                borderColor: ['rgb(34, 197, 94)', 'rgb(239, 68, 68)'],
+                borderWidth: 2,
+              }],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    label: function(ctx) { return ctx.dataset.label + ': ' + ctx.raw.toFixed(2) + '%'; },
+                  },
+                },
+              },
+              scales: {
+                y: {
+                  beginAtZero: true,
+                  max: 100,
+                  title: { display: true, text: 'Rate (%)' },
+                  ticks: { callback: function(v) { return v + '%'; } },
+                },
+              },
+            },
+          });
+        }
+
+        // Top 10 by CLV – bar chart
+        const withClvList = rows.filter(r => r.clv_12m != null && r.clv_12m !== '' && !isNaN(Number(r.clv_12m)));
+        const top10 = withClvList
+          .map(r => ({ id: r.customer_id, clv: Number(r.clv_12m) }))
+          .sort((a, b) => b.clv - a.clv)
+          .slice(0, 10);
+        const chartEl = document.getElementById('chartTop10');
+        if (chartTop10) chartTop10.destroy();
+        if (top10.length > 0 && typeof Chart !== 'undefined') {
+          chartTop10 = new Chart(chartEl, {
+            type: 'bar',
+            data: {
+              labels: top10.map(r => r.id),
+              datasets: [{
+                label: 'CLV (12 months)',
+                data: top10.map(r => r.clv),
+                backgroundColor: 'rgba(30, 58, 95, 0.7)',
+                borderColor: 'rgb(30, 58, 95)',
+                borderWidth: 1,
+              }],
+            },
+            options: {
+              indexAxis: 'y',
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    label: function(ctx) { return 'CLV: ' + formatNum(ctx.raw); },
+                  },
+                },
+              },
+              scales: {
+                x: {
+                  beginAtZero: true,
+                  title: { display: true, text: 'CLV (12 months)' },
+                },
+                y: {
+                  title: { display: true, text: 'Customer' },
+                },
+              },
+            },
+          });
+        } else if (chartEl) {
+          chartEl.getContext('2d').clearRect(0, 0, chartEl.width, chartEl.height);
+        }
+
+        // CLV Distribution (Histogram)
+        const clvCanvas = document.getElementById('chartClvDist');
+        if (chartClvDist) chartClvDist.destroy();
+        const clvVals = rows.map(r => Number(r.clv_12m)).filter(v => !isNaN(v));
+        if (typeof Chart !== 'undefined' && clvCanvas && clvVals.length > 1) {
+          const minClv = Math.min(...clvVals);
+          const maxClv = Math.max(...clvVals);
+          const binCount = 10;
+          const range = Math.max(1e-9, maxClv - minClv);
+          const binSize = range / binCount;
+          const bins = new Array(binCount).fill(0);
+          for (const v of clvVals) {
+            let idx = Math.floor((v - minClv) / binSize);
+            if (idx >= binCount) idx = binCount - 1;
+            if (idx < 0) idx = 0;
+            bins[idx]++;
+          }
+          const labels = [];
+          for (let i = 0; i < binCount; i++) {
+            const start = minClv + i * binSize;
+            const end = i === binCount - 1 ? maxClv : start + binSize;
+            labels.push('₹ ' + formatNum(start) + ' - ₹ ' + formatNum(end));
+          }
+          chartClvDist = new Chart(clvCanvas, {
+            type: 'bar',
+            data: {
+              labels,
+              datasets: [{
+                label: 'Customers',
+                data: bins,
+                backgroundColor: 'rgba(30, 58, 95, 0.6)',
+                borderColor: 'rgb(30, 58, 95)',
+                borderWidth: 1,
+              }],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    label: function(ctx) { return 'Count: ' + ctx.raw; },
+                  },
+                },
+              },
+              scales: {
+                x: { title: { display: true, text: 'CLV (12 months)' } },
+                y: { beginAtZero: true, title: { display: true, text: 'Count' } },
+              },
+            },
+          });
+        } else if (clvCanvas) {
+          clvCanvas.getContext('2d').clearRect(0, 0, clvCanvas.width, clvCanvas.height);
+        }
+
+        // RFM Bubble (Recency vs Frequency, bubble size = CLV, color ~ prob alive)
+        const rfmCanvas = document.getElementById('chartRfmBubble');
+        if (chartRfmBubble) chartRfmBubble.destroy();
+        const bubbleRows = rows.filter(r => r.recency != null && r.frequency != null && !isNaN(Number(r.recency)) && !isNaN(Number(r.frequency)));
+        if (typeof Chart !== 'undefined' && rfmCanvas && bubbleRows.length > 0) {
+          const maxClv = Math.max(1e-9, ...bubbleRows.map(r => Number(r.clv_12m) || 0));
+          const dataPts = [];
+          const colors = [];
+          const meta = [];
+          bubbleRows.forEach(r => {
+            const rec = Number(r.recency);
+            const freq = Number(r.frequency);
+            const clv = Number(r.clv_12m);
+            const prob = Number(r.prob_alive);
+            const ratio = isNaN(clv) || !isFinite(clv) ? 0 : Math.min(1, Math.max(0, clv / maxClv));
+            const radius = 4 + 12 * ratio;
+            const hue = Math.round(Math.min(120, Math.max(0, (isNaN(prob) ? 0 : prob) * 120))); // 0=red, 120=green
+            const color = 'hsl(' + hue + ', 70%, 45%)';
+            dataPts.push({ x: rec, y: freq, r: radius });
+            colors.push(color);
+            meta.push({ id: r.customer_id, recency: rec, frequency: freq, clv, prob });
+          });
+          chartRfmBubble = new Chart(rfmCanvas, {
+            type: 'bubble',
+            data: {
+              datasets: [{
+                label: 'Customers',
+                data: dataPts,
+                backgroundColor: colors,
+                borderColor: colors,
+                borderWidth: 1,
+              }],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    label: function(ctx) {
+                      const i = ctx.dataIndex;
+                      const m = meta[i] || {};
+                      const parts = [];
+                      if (m.id != null) parts.push('ID: ' + m.id);
+                      parts.push('R: ' + formatNum(m.recency) + 'd');
+                      parts.push('F: ' + formatNum(m.frequency));
+                      if (!isNaN(m.clv)) parts.push('CLV: ₹ ' + formatNum(m.clv));
+                      if (!isNaN(m.prob)) parts.push('Alive: ' + formatPercent(m.prob));
+                      return parts.join(', ');
+                    },
+                  },
+                },
+              },
+              scales: {
+                x: { title: { display: true, text: 'Recency (days)' } },
+                y: { beginAtZero: true, title: { display: true, text: 'Frequency' } },
+              },
+            },
+          });
+        } else if (rfmCanvas) {
+          rfmCanvas.getContext('2d').clearRect(0, 0, rfmCanvas.width, rfmCanvas.height);
+        }
+
+        // Table with clear headers + tooltips, align header text with column values
+        thead.innerHTML = '<tr>' + cols.map(c => {
+          const isNum = c !== 'customer_id';
+          const cls = isNum ? 'num' : '';
+          return '<th class="' + cls + '" title="' + (COL_TITLES[c] || '') + '">' + (COL_LABELS[c] || c) + '</th>';
+        }).join('') + '</tr>';
+        
+        // Calculate averages for numeric columns
+        const numericCols = cols.filter(c => c !== 'customer_id');
+        const averages = {};
+        numericCols.forEach(col => {
+          const vals = rows.map(r => {
+            const v = r[col];
+            return v != null && !isNaN(Number(v)) ? Number(v) : null;
+          }).filter(v => v !== null);
+          averages[col] = vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+        });
+        
+        // Build table rows with summary row first
+        const summaryRow = '<tr class="summary-row"><td>Average</td>' + cols.slice(1).map(col => {
+          const avg = averages[col];
+          const isNum = col !== 'customer_id' && avg != null;
+          const cls = isNum ? 'num' : '';
+          let display = '—';
+          if (isNum) {
+            if (col === 'prob_alive') display = formatPercent(avg);
+            else if (col === 'monetary_value' || col === 'clv_12m') display = '₹ ' + formatNum(avg);
+            else display = formatNum(avg);
+          }
+          return '<td class="' + cls + '">' + display + '</td>';
+        }).join('') + '</tr>';
+        
+        const dataRows = rows.map(row => '<tr>' + cols.map(col => {
+          const v = row[col];
+          const isNum = col !== 'customer_id' && (typeof v === 'number' || (v != null && !isNaN(Number(v))));
+          const cls = isNum ? 'num' : (col === 'customer_id' ? 'customer-id' : '');
+          let display;
+          if (v == null || v === '') display = '—';
+          else if (col === 'prob_alive') display = formatPercent(v);
+          else if (col === 'monetary_value' || col === 'clv_12m') display = '₹ ' + formatNum(v);
+          else display = isNum ? formatNum(v) : v;
+          return '<td class="' + cls + '">' + display + '</td>';
+        }).join('') + '</tr>').join('');
+        
+        tbody.innerHTML = summaryRow + dataRows;
+
+        dashboardEl.classList.remove('hidden');
+      } catch (e) {
+        showMessage('Network error: ' + e.message, true);
+      } finally {
+        uploadBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
