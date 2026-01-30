@@ -35,17 +35,28 @@
     .upload-card label { display: block; margin-bottom: 0.5rem; font-weight: 600; color: #374151; }
     .upload-card input[type="file"] { margin-bottom: 1rem; }
     .btn {
-      background: #1e3a5f;
+      background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%);
       color: #fff;
       border: none;
-      padding: 0.65rem 1.4rem;
-      border-radius: 8px;
-      font-weight: 600;
+      padding: 0.7rem 1.5rem;
+      border-radius: 10px;
+      font-weight: 700;
       cursor: pointer;
       font-size: 0.95rem;
+      box-shadow: 0 8px 16px rgba(30, 58, 95, 0.25);
+      transition: transform .06s ease, box-shadow .2s ease;
     }
-    .btn:hover { background: #16324d; }
-    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn:hover { background: #16324d; transform: translateY(-1px); box-shadow: 0 10px 18px rgba(30,58,95,.28); }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
+    .btn.loading { position: relative; padding-left: 2.1rem; }
+    .btn.loading::before {
+      content: "";
+      position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+      width: 16px; height: 16px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,.6); border-top-color: #fff;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: translateY(-50%) rotate(360deg); } }
 
     .dashboard-section { margin-bottom: 1.5rem; }
     .dashboard-section h2 {
@@ -113,6 +124,27 @@
     }
     .chart-wrap { position: relative; height: 320px; }
     .hidden { display: none; }
+    /* Drag & drop upload */
+    .dropzone {
+      position: relative;
+      background: #f8fafc;
+      border: 2px dashed #cbd5e1;
+      border-radius: 12px;
+      padding: 1.25rem;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 110px;
+      transition: border-color .2s ease, background .2s ease, box-shadow .2s ease;
+      cursor: pointer;
+    }
+    .dropzone:focus { outline: none; box-shadow: 0 0 0 4px rgba(37,99,235,.25); }
+    .dropzone.dragover { background: #eef2ff; border-color: #2563eb; }
+    .dz-inner { text-align: center; color: #6b7280; }
+    .dz-inner .dz-strong { color: #1f2937; font-weight: 700; }
+    .dz-hint { font-size: .85rem; margin-top: .25rem; }
+    .file-input { display: none; }
+    .file-chip { display: inline-flex; align-items: center; gap: .5rem; padding: .5rem .75rem; border-radius: 999px; background: #eef2ff; color: #1e40af; font-weight: 600; margin: .75rem 0 0 0; }
+    .chip-close { border: none; background: transparent; color: #1e3a5f; font-size: 1rem; cursor: pointer; line-height: 1; padding: 0 .25rem; }
+    .chip-close:hover { color: #0f172a; }
     .definitions { background: #eff6ff; color: #1e40af; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; font-size: 0.85rem; }
 
     @media (max-width: 640px) {
@@ -127,10 +159,20 @@
   </header>
 
   <div class="upload-card">
-    <label for="csv">Select CSV file</label>
-    <input type="file" id="csv" accept=".csv" />
+    <label>Select CSV file</label>
+    <div id="dropzone" class="dropzone" tabindex="0" aria-label="Upload CSV">
+      <div class="dz-inner">
+        <div><span class="dz-strong">Drag & drop</span> your CSV here, or <span class="dz-strong">browse</span></div>
+        <div class="dz-hint">Only .csv files are accepted</div>
+      </div>
+      <input type="file" id="csv" accept=".csv" class="file-input" />
+    </div>
+    <div id="fileChip" class="file-chip hidden">
+      <span id="fileName"></span>
+      <button type="button" id="fileRemove" class="chip-close" aria-label="Remove file">×</button>
+    </div>
     <br />
-    <button type="button" id="upload" class="btn">Analyze</button>
+    <button type="button" id="upload" class="btn" disabled>Analyze</button>
   </div>
 
   <div id="message" class="message hidden"></div>
@@ -207,6 +249,10 @@
     const statsRowEl = document.getElementById('statsRow');
     const thead = document.getElementById('thead');
     const tbody = document.getElementById('tbody');
+    const dropzone = document.getElementById('dropzone');
+    const fileChip = document.getElementById('fileChip');
+    const fileNameEl = document.getElementById('fileName');
+    const fileRemove = document.getElementById('fileRemove');
     let chartTop10 = null;
     let chartChurnRetention = null;
     let chartClvDist = null;
@@ -258,15 +304,78 @@
       return (n * 100).toFixed(1) + '%';
     }
 
+    // ----- Enhanced upload UX -----
+    function enableUploadUI(file) {
+      if (file) {
+        fileNameEl.textContent = file.name;
+        fileChip.classList.remove('hidden');
+        uploadBtn.disabled = false;
+      } else {
+        fileChip.classList.add('hidden');
+        fileNameEl.textContent = '';
+        uploadBtn.disabled = true;
+      }
+    }
+
+    function attachFileToInput(file) {
+      try {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        csvInput.files = dt.files;
+      } catch (e) { /* fallback no-op */ }
+      enableUploadUI(file);
+    }
+
+    csvInput.addEventListener('change', () => {
+      const f = csvInput.files && csvInput.files[0];
+      if (f && !f.name.toLowerCase().endsWith('.csv')) {
+        enableUploadUI(null);
+        showMessage('Please select a .csv file.', true);
+        return;
+      }
+      enableUploadUI(f || null);
+    });
+
+    if (dropzone) {
+      dropzone.addEventListener('click', () => csvInput.click());
+      dropzone.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); csvInput.click(); }
+      });
+      dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+      dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+      dropzone.addEventListener('drop', (e) => {
+        e.preventDefault(); dropzone.classList.remove('dragover');
+        const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (!f) return;
+        if (!f.name.toLowerCase().endsWith('.csv')) {
+          enableUploadUI(null);
+          showMessage('Only .csv files are accepted.', true);
+          return;
+        }
+        attachFileToInput(f);
+      });
+    }
+
+    if (fileRemove) {
+      fileRemove.addEventListener('click', () => {
+        csvInput.value = '';
+        enableUploadUI(null);
+        hideMessage();
+      });
+    }
+
     uploadBtn.addEventListener('click', async () => {
       const file = csvInput.files[0];
       if (!file) {
         showMessage('Please select a CSV file.', true);
         return;
       }
-      hideMessage();
+      showMessage('Uploading: ' + file.name + ' ...', false);
       dashboardEl.classList.add('hidden');
       uploadBtn.disabled = true;
+      const originalText = uploadBtn.textContent;
+      uploadBtn.textContent = 'Analyzing...';
+      uploadBtn.classList.add('loading');
 
       const form = new FormData();
       form.append('file', file);
@@ -570,6 +679,8 @@
         showMessage('Network error: ' + e.message, true);
       } finally {
         uploadBtn.disabled = false;
+        uploadBtn.classList.remove('loading');
+        uploadBtn.textContent = originalText;
       }
     });
   </script>
