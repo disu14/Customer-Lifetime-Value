@@ -1,10 +1,14 @@
+from pathlib import Path
+
 import pandas as pd
 from lifetimes import BetaGeoFitter, GammaGammaFitter
 from lifetimes.utils import summary_data_from_transaction_data
 
+ROOT = Path(__file__).resolve().parent.parent
+
 
 def main() -> None:
-    path = "data/transactions.csv"
+    path = ROOT / "data" / "transactions.csv"
     df = pd.read_csv(path, parse_dates=["transaction_date"], dayfirst=True)
     print("Loaded rows:", len(df))
     print("\nRaw data head:")
